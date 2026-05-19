@@ -1,0 +1,56 @@
+services:
+  webhook:
+    build:
+      context: ./webhook
+      dockerfile: Dockerfile
+    container_name: argus-webhook
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=${PORT:-3000}
+      - NODE_ENV=${NODE_ENV:-development}
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_APP_PRIVATE_KEY_PATH=${GITHUB_APP_PRIVATE_KEY_PATH:-/run/secrets/github_private_key}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./keys:/run/secrets:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  engine:
+    build:
+      context: ./engine
+      dockerfile: Dockerfile
+    container_name: argus-engine
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      - MAX_DIFF_LINES=${MAX_DIFF_LINES:-500}
+      - REVIEW_SEVERITY_THRESHOLD=${REVIEW_SEVERITY_THRESHOLD:-warning}
+      - LLM_MODEL=${LLM_MODEL:-claude-sonnet-4-6}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: argus-db
+    environment:
+      - POSTGRES_USER=argus
+      - POSTGRES_PASSWORD=argus
+      - POSTGRES_DB=argus
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U argus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
